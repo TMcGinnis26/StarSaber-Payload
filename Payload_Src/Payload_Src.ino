@@ -21,34 +21,54 @@ int packets, state, mh, mm;//Packet Count, Flight State, Mission Hours, Mission 
 float ms;//Mission seconds + milliseconds
 
 //Operation Values
+enum states
+{
+    idle,
+    active
+};
+states prev_state;
+states state;
 float lastAlt, pressure, heading;
 unsigned int lastTime;
+
+
+
 
 
 
 Adafruit_BMP3XX bmp;
 Adafruit_INA260 ina260 = Adafruit_INA260();
 Adafruit_BNO055 myIMU = Adafruit_BNO055();
-/*
- * sensors_event_t event;
-   imu.getEvent(&event);
- * heading = event.orientation.x;
- *
- *
- */
 
-void readEEPROM()
+//**Flight State Functions**//
+void idle_state()
 {
+    //await commands from the container
+    //poll sensors every 1 second to keep awake
+    return;
+}
 
+void active_state()
+{
+    //updateEEPROM every 1 second
+    //poll every 75ms
+    //if cmd recieved parseCommand()
+    return;
+}
+
+
+
+//**Flight Functions**//
+bool recover()
+{
+    return false;
 
 }
 
 
 void updateEEPROM()
 {
-
-
-
+    return;
 }
 
 
@@ -60,14 +80,14 @@ void parseCommand()
         //parse the packet
     }
     //Send packet if request for telemtry is made
-
+    return;
 }
 
 
-void sampleSensors() //Poll all sensors, update values
+void sampleSensors() //read all sensors, update values
 {
 
-
+    return;
 }
 
 
@@ -80,39 +100,33 @@ void setup() {
 
 
     bmp.begin_I2C();
-    for (int i = 0; i < 5; i++)
-    {
-        bmp.performReading();
-        pressure = bmp.pressure;
-    }
-    //bmp.performReading()
-    //bmp.temperature
-    //bmp.altitude(seaLvlPressure)
-    //bmp.pressure
-    ina260.begin();
-    //ina260.readBusVoltage()
-    myIMU.begin();
-    //IMU
-    //
 
+
+
+    /*temporarily remove recovery functonality
+    if (!recover())
+    {
+        //default values if not recovering
+        state = idle;
+    }
+    */
+    state = idle;
 }
 
 void loop() {
-    bmp.performReading();
-    sensors_event_t event;
-    myIMU.getEvent(&event);
-
-
-    //readings
-    heading = event.orientation.x;
-    pressure = bmp.pressure;
-    temp = bmp.temperature;
-    voltage = ina260.readBusVoltage();
-
-    //print it via Xbee
-    Serial1.println("Heading: " + (String)heading + ", Pressure: " + (String)pressure + ", Temperature: " + (String)temp + ", Voltage: " + (String)voltage);
-    delay(3000);
-
-
-
+    switch (state) 
+    {
+    case idle:
+        idle_state();
+        break;
+    case active:
+        active_state();
+        break;
+    default:
+        while (1)
+        {
+            //error loop
+        }
+    }
+    //parseCommand() if incoming serial
 }
