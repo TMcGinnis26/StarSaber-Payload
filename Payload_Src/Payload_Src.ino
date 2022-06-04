@@ -14,11 +14,16 @@
 #include <Servo.h>
 #include <Wire.h>
 
+#define serialTimeout 175
+#define TeamID 1092
+
 //Telemetry Values
-float voltage, altitude, temp, pError;//voltage draw, altitude, temperature, pointing error
+float voltage, altitude, temp, pError, seaLvlPres;//voltage draw, altitude, temperature, pointing error
 float gyro_r, gyro_p, gyro_y, accel_r, accel_p, accel_y, mag_r, mag_p, mag_y;//IMU data values
 int packets, state, mh, mm;//Packet Count, Flight State, Mission Hours, Mission Minutes 
-float ms;//Mission seconds + milliseconds
+float ms, pointing_error;//Mission seconds + milliseconds
+String curPacket, cmd;
+char inChar;
 
 //Operation Values
 enum states
@@ -29,32 +34,12 @@ enum states
 states prev_state;
 states state;
 float lastAlt, pressure, heading;
-unsigned int lastTime;
-
-
-
-
+unsigned int lastSampleTime, serialWait;
 
 
 Adafruit_BMP3XX bmp;
 Adafruit_INA260 ina260 = Adafruit_INA260();
 Adafruit_BNO055 myIMU = Adafruit_BNO055();
-
-//**Flight State Functions**//
-void idle_state()
-{
-    //await commands from the container
-    //poll sensors every 1 second to keep awake
-    return;
-}
-
-void active_state()
-{
-    //updateEEPROM every 1 second
-    //poll every 75ms
-    //if cmd recieved parseCommand()
-    return;
-}
 
 
 
@@ -73,20 +58,78 @@ void updateEEPROM()
 
 
 
-void parseCommand()
+
+
+
+void sampleSensors()
 {
-    if (Serial1.available())//if incoming packet from Xbee
+    //if (millis() - lastSampleTime >= 75)//for limiting the sample speed
+    //{
+    bmp.performReading();
+    temp = bmp.temperature;
+
+    voltage = ina260.readBusVoltage() * 0.001;
+    altitude = bmp.readAltitude(seaLvlPres);
+
+    //read the IMU
+
+        /*
+    if (ledstat)
     {
-        //parse the packet
+        digitalWrite(TESTLED, LOW);
+        ledstat = false;
     }
-    //Send packet if request for telemtry is made
+    else
+    {
+        digitalWrite(TESTLED, HIGH);
+        ledstat = true;
+    }
+*/
+    //Read GPS
+    
+    lastSampleTime = millis();
+    // }
     return;
 }
 
-
-void sampleSensors() //read all sensors, update values
+void adjust_camera()
 {
 
+}
+
+void readSerial()
+{
+    if (Serial1.available() > 0)
+    {
+
+        inChar = ' ';
+        serialWait = millis();
+        while (millis() - serialWait < serialTimeout)
+        {
+            if (Serial1.available())
+            {
+                inChar = Serial1.read();
+                if (inChar == '\n')
+                    break;
+                cmd += String(inChar);
+            }
+
+        }
+
+        if (cmd.substring(0,13) == "CMD,1092,POLL")//
+        {
+            curPacket = String(TeamID) + "," + "T" + "," + String(altitude) + "," + String(temp) + "," + String(voltage) + "," + String(gyro_r) + "," + String(gyro_p) + "," + String(gyro_y) + "," + String(accel_r) + "," + String(accel_p) + "," + String(accel_y) + "," + String(mag_r) + "," + String(mag_p) + "," + String(mag_y) + "," + String(pointing_error) + "," + String(state);
+
+            Serial1.println(curPacket);//send to Container
+        }
+        if (cmd.substring(0,14) == "CMD,1092,PWRON")//
+        {
+            seaLvlPres = cmd.substring(15).toFloat();
+            state = active;
+        }
+        cmd = "";
+        curPacket = "";
+    }
     return;
 }
 
@@ -100,6 +143,8 @@ void setup() {
 
 
     bmp.begin_I2C();
+    ina260.begin();
+    myIMU.begin();
 
 
 
@@ -117,10 +162,10 @@ void loop() {
     switch (state) 
     {
     case idle:
-        idle_state();
+        delay(100);
         break;
     case active:
-        active_state();
+        adjust_camera();
         break;
     default:
         while (1)
@@ -128,5 +173,6 @@ void loop() {
             //error loop
         }
     }
-    //parseCommand() if incoming serial
+    sampleSensors();
+    readSerial();//Read incomming serial data (xbees)
 }
