@@ -15,7 +15,7 @@
 #include <Wire.h>
 
 #define TESTLED 13
-#define serialTimeout 100
+#define serialTimeout 500
 #define TeamID 1092
 
 //Telemetry Values
@@ -25,18 +25,18 @@ int packets, mh, mm;//Packet Count, Flight State, Mission Hours, Mission Minutes
 float ms, pointing_error;//Mission seconds + milliseconds
 String curPacket, cmd;
 char inChar;
+String Packet1, Packet2, Packet3, Packet4;
 
 //Operation Values
 enum states
 {
     Stby = 0,
     Active = 1,
-    Polling = 2,
-    Grnd = 3
+    Grnd = 2
 };
 states state;
-float lastAlt, prevAlt, pressure, heading;
-unsigned int lastSampleTime, serialWait, lastReadAlt, lastPoll;
+float lastAlt, prevAlt, pressure, heading, passedTime;
+unsigned int lastSampleTime, serialWait, lastReadAlt, lastPoll, recordTime;
 
 
 Adafruit_BMP3XX bmp;
@@ -65,9 +65,8 @@ void updateEEPROM()
 
 void sampleSensors()
 {
-    //if (millis() - lastSampleTime >= 10)//for limiting the sample speed
-    //{
-    bmp.performReading();
+    
+    //bmp.performReading();
     temp = bmp.temperature;
 
     voltage = ina260.readBusVoltage() * 0.001;
@@ -75,21 +74,7 @@ void sampleSensors()
 
     //read the IMU
 
-        /*
-    if (ledstat)
-    {
-        digitalWrite(TESTLED, LOW);
-        ledstat = false;
-    }
-    else
-    {
-        digitalWrite(TESTLED, HIGH);
-        ledstat = true;
-    }
-        */
-
-        //lastSampleTime = millis();
-   // }
+    
     return;
 }
 
@@ -101,54 +86,68 @@ void adjust_camera()
 
 void readSerial()
 {
-    if (Serial1.available() > 0)
+    cmd = "";
+    curPacket = "";
+    if (Serial1.available())
     {
-        digitalWrite(TESTLED, HIGH);
-        //delay(5000);
+        //digitalWrite(TESTLED, HIGH);
         inChar = ' ';
         serialWait = millis();
-        while (millis() - serialWait < serialTimeout)
-        {
-            if (Serial1.available())
+        //Serial1.println("Start Reading: " + millis() / 1000);
+       // while (millis() - serialWait < serialTimeout)
+        //{
+            while (Serial1.available())
             {
-                cmd += Serial1.readString();
+                //inChar = Serial1.read();
+                cmd += Serial1.readStringUntil('\n');
                 if (cmd.indexOf('\n') != -1)
+                {
                     break;
-                //cmd += String(inChar);
+                }
             }
+        //}
 
-        }
-
-        /*
-        if (cmd.substring(0, 11) == "CMD1092POLL")//
+        
+        if (cmd.substring(9, 13) == "POLL")//
         {
-            sampleSensors();
-            curPacket = String(TeamID) + "," + "T" + "," + String(altitude) + "," + String(temp) + "," + String(voltage) + "," + String(gyro_r) + "," + String(gyro_p) + "," + String(gyro_y) + "," + String(accel_r) + "," + String(accel_p) + "," + String(accel_y) + "," + String(mag_r) + "," + String(mag_p) + "," + String(mag_y) + "," + String(pointing_error) + "," + String(state);
 
-            Serial1.println(curPacket);//send to Container
+            for (int i = 0; i < 4; i++)
+            {
+                sampleSensors();
+                Packet1 = String(TeamID) + "," + "T" + "," + String(altitude) + "," + String(temp) + "," + String(voltage) + "," + String(gyro_r) + "," + String(gyro_p) + "," + String(gyro_y) + "," + String(accel_r) + "," + String(accel_p) + "," + String(accel_y) + "," + String(mag_r) + "," + String(mag_p) + "," + String(mag_y) + "," + String(pointing_error) + "," + String(state);
+                Serial1.println(Packet1);
+                delay(5);
+            }
+            return;
         }
-        */
 
         if (cmd.substring(0, 14) == "CMD,1092,PWRON")//
         {
             seaLvlPres = cmd.substring(15).toFloat();
             state = Active;
             digitalWrite(TESTLED, HIGH);
-            delay(5000);
+            return;
+            //delay(5000);
         }
 
-        cmd = "";
-        curPacket = "";
+        if (cmd.substring(0, 13) == "CMD,1092,LAND")//
+        {
+            state = Grnd;
+            digitalWrite(TESTLED, HIGH);
+            return;
+            //delay(5000);
+        }
     }
     return;
 }
 
+/*
 bool check_landing()
 {
     if (millis() - lastReadAlt >= 2000)//check every 2 sec
     {
         altitude = bmp.readAltitude(seaLvlPres);
-        if (altitude < prevAlt + 1 && altitude > prevAlt - 1 && altitude < -30.0)
+        if (altitude < prevAlt + 1 && altitude > prevAlt - 1 && altitude < 100)
         {
             return true;
         }
@@ -159,14 +158,15 @@ bool check_landing()
     }
     return false;
 }
+*/
 
 void setup() {
-    Serial.begin(9600);
-    Serial1.begin(9600);//xbee
+    //Serial.begin(9600);
+    Serial1.begin(115200);//xbee
+    Serial1.setTimeout(100);
     pinMode(TESTLED, OUTPUT);
     digitalWrite(TESTLED, HIGH);
-    Serial.println("ON!");
-    delay(500);
+    delay(200);
     digitalWrite(TESTLED, LOW);
 
     bmp.begin_I2C();
@@ -182,7 +182,8 @@ void setup() {
         state = Stby;
     }
     */
-    state = Stby;
+    //state = Stby;
+    state = Active;
     lastAlt = 10.0;
 }
 
@@ -191,13 +192,10 @@ void loop() {
     {
     case Stby:
         altitude = bmp.readAltitude(seaLvlPres);
-        Serial1.println(String(altitude) + " Prev: " + String(lastAlt));
         if (altitude > 500 && millis() - lastReadAlt >= 500)
         {
-            Serial1.println("ALTITUDE PASS"+String(altitude) + "<" + String(lastAlt));
             if (altitude < prevAlt)
             {
-                Serial1.println("NOW ACTIVE");
                 state = Active;
                 break;
             }
@@ -208,33 +206,11 @@ void loop() {
         break;
     case Active:
         adjust_camera();
-        //readSerial();
-        if (bmp.readAltitude(seaLvlPres) <= 300)
-        {
-            state = Polling;
-        }
-        
-        break;
-    case Polling:
-        adjust_camera();
-
-        if (millis() - lastPoll >= 225)
-        {
-            digitalWrite(TESTLED, HIGH);
-            sampleSensors();
-            //curPacket = String(TeamID) + "," + "T" + "," + String(altitude) + "," + String(temp) + "," + String(voltage) + "," + String(gyro_r) + "," + String(gyro_p) + "," + String(gyro_y) + "," + String(accel_r) + "," + String(accel_p) + "," + String(accel_y) + "," + String(mag_r) + "," + String(mag_p) + "," + String(mag_y) + "," + String(pointing_error) + "," + String(state);
-            Serial1.println(String(TeamID) + "," + "T" + "," + String(altitude) + "," + String(temp) + "," + String(voltage) + "," + String(gyro_r) + "," + String(gyro_p) + "," + String(gyro_y) + "," + String(accel_r) + "," + String(accel_p) + "," + String(accel_y) + "," + String(mag_r) + "," + String(mag_p) + "," + String(mag_y) + "," + String(pointing_error) + "," + String(state));//send to Container
-            lastPoll = millis();
-            digitalWrite(TESTLED, LOW);
-        }
-
-        //if (!check_landing())
-        {
-            //  state = Grnd;
-        }
+        readSerial();
+        sampleSensors();
         break;
     case Grnd:
-
+        //do landing stuff
         break;
     default:
         while (1)
@@ -242,6 +218,4 @@ void loop() {
             //error loop
         }
     }
-    //sampleSensors();
-    //Read incomming serial data (xbees)
 }
