@@ -17,6 +17,7 @@
 #define TESTLED 13
 #define serialTimeout 500
 #define TeamID 1092
+#define ServoPin 2
 
 //Telemetry Values
 float voltage, altitude, temp, pError, seaLvlPres = 988.0;//voltage draw, altitude, temperature, pointing error
@@ -33,15 +34,18 @@ enum states
     Stby = 0,
     Active = 1,
     Grnd = 2
-};
-states state;
+}state;
+
 float lastAlt, prevAlt, pressure, heading, passedTime;
 unsigned int lastSampleTime, serialWait, lastReadAlt, lastPoll, recordTime;
+int movement, error;
+bool servoActive;
 
 
 Adafruit_BMP3XX bmp;
 Adafruit_INA260 ina260 = Adafruit_INA260();
-Adafruit_BNO055 myIMU = Adafruit_BNO055();
+Adafruit_BNO055 bno = Adafruit_BNO055();
+Servo servo;
 
 
 
@@ -73,6 +77,20 @@ void sampleSensors()
     altitude = bmp.readAltitude(seaLvlPres);
 
     //read the IMU
+    sensors_event_t event;
+    bno.getEvent(&event);
+
+    gyro_p = event.gyro.x;//pitch
+    gyro_r = event.gyro.z;//roll
+    gyro_y = event.gyro.y;//yaw
+
+    mag_p = event.magnetic.x;//pitch
+    mag_r = event.magnetic.z;//roll
+    mag_y = event.magnetic.y;//yaw
+
+    accel_p = event.acceleration.x;//pitch
+    accel_r = event.acceleration.z;//roll
+    accel_y = event.acceleration.y;//yaw
 
     
     return;
@@ -80,7 +98,25 @@ void sampleSensors()
 
 void adjust_camera()
 {
+    sensors_event_t event;
+    bno.getEvent(&event);
 
+    heading = event.orientation.x;
+    error = 180 - heading;
+
+    if (error < -5 || error > 5)//if need to move
+    {
+        if (!servoActive)
+        {
+            servo.attach(ServoPin);
+        }
+        movement = (int)(heading / 2.0);
+        servo.write(movement);
+    }
+    else
+    {
+        servo.detach();
+    }
     return;
 }
 
@@ -90,22 +126,16 @@ void readSerial()
     curPacket = "";
     if (Serial1.available())
     {
-        //digitalWrite(TESTLED, HIGH);
-        inChar = ' ';
-        serialWait = millis();
-        //Serial1.println("Start Reading: " + millis() / 1000);
-       // while (millis() - serialWait < serialTimeout)
-        //{
-            while (Serial1.available())
-            {
+            //while (Serial1.available())
+            //{
                 //inChar = Serial1.read();
                 cmd += Serial1.readStringUntil('\n');
                 if (cmd.indexOf('\n') != -1)
                 {
-                    break;
+                    return;
                 }
-            }
-        //}
+            //}
+        
 
         
         if (cmd.substring(9, 13) == "POLL")//
@@ -114,8 +144,22 @@ void readSerial()
             for (int i = 0; i < 4; i++)
             {
                 sampleSensors();
-                Packet1 = String(TeamID) + "," + "T" + "," + String(altitude) + "," + String(temp) + "," + String(voltage) + "," + String(gyro_r) + "," + String(gyro_p) + "," + String(gyro_y) + "," + String(accel_r) + "," + String(accel_p) + "," + String(accel_y) + "," + String(mag_r) + "," + String(mag_p) + "," + String(mag_y) + "," + String(pointing_error) + "," + String(state);
-                Serial1.println(Packet1);
+                Serial1.print(TeamID);
+                Serial1.print(",T,");
+                Serial1.print(altitude); Serial1.print(",");
+                Serial1.print(temp); Serial1.print(",");
+                Serial1.print(voltage); Serial1.print(",");
+                Serial1.print(gyro_r); Serial1.print(","); 
+                Serial1.print(gyro_p); Serial1.print(",");
+                Serial1.print(gyro_y); Serial1.print(","); 
+                Serial1.print(accel_r); Serial1.print(",");
+                Serial1.print(accel_p); Serial1.print(","); 
+                Serial1.print(accel_y); Serial1.print(",");
+                Serial1.print(mag_r); Serial1.print(","); 
+                Serial1.print(mag_p); Serial1.print(",");
+                Serial1.print(mag_y); Serial1.print(","); 
+                Serial1.print(pointing_error); Serial1.print(",");
+                Serial1.println(state);
                 delay(5);
             }
             return;
@@ -137,28 +181,12 @@ void readSerial()
             return;
             //delay(5000);
         }
+
+
     }
     return;
 }
 
-/*
-bool check_landing()
-{
-    if (millis() - lastReadAlt >= 2000)//check every 2 sec
-    {
-        altitude = bmp.readAltitude(seaLvlPres);
-        if (altitude < prevAlt + 1 && altitude > prevAlt - 1 && altitude < 100)
-        {
-            return true;
-        }
-        lastReadAlt = millis();
-        prevAlt = altitude;
-        return false;
-
-    }
-    return false;
-}
-*/
 
 void setup() {
     //Serial.begin(9600);
@@ -171,8 +199,8 @@ void setup() {
 
     bmp.begin_I2C();
     ina260.begin();
-    //myIMU.begin();
-
+    bno.begin();
+    servo.attach(ServoPin);
 
 
     /*temporarily remove recovery functonality
@@ -207,10 +235,10 @@ void loop() {
     case Active:
         adjust_camera();
         readSerial();
-        sampleSensors();
         break;
     case Grnd:
-        //do landing stuff
+        while (1)
+            delay(500);
         break;
     default:
         while (1)
