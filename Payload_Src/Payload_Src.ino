@@ -37,7 +37,7 @@ enum states
 }state;
 
 float lastAlt, prevAlt, pressure, heading, passedTime;
-unsigned int lastSampleTime, serialWait, lastReadAlt, lastPoll, recordTime;
+unsigned int lastSampleTime, serialWait, lastReadAlt, lastPoll, recordTime, cameraTime;
 int movement, error;
 bool servoActive;
 
@@ -64,7 +64,16 @@ void updateEEPROM()
 
 
 
-
+void cameraControl(String what)
+{
+    if (what == "ENABLE" || what == "DISABLE")
+    {
+        digitalWrite(6, LOW);
+        delay(1000);
+        digitalWrite(6, HIGH);
+    }
+    return;
+}
 
 
 void sampleSensors()
@@ -212,6 +221,8 @@ void setup() {
     */
     //state = Stby;
     state = Active;
+    cameraControl("ENABLE");
+    cameraTime = millis();
     lastAlt = 10.0;
 }
 
@@ -235,6 +246,11 @@ void loop() {
     case Active:
         adjust_camera();
         readSerial();
+        if (cameraTime >= 20000)
+        {
+            cameraControl("DISABLE");
+            while (1);
+        }
         break;
     case Grnd:
         while (1)
